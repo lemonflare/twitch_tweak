@@ -68,28 +68,46 @@ jobs:
         make clean
         make package DEBUG=0 FINALPACKAGE=1
 
-    - name: Find package
-      id: find-package
+    - name: Find dylib and package
+      id: find-files
       run: |
-        PACKAGE=$(find . -name "*.deb" -path "*/packages/*" | head -n 1)
-        echo "package=$PACKAGE" >> $GITHUB_OUTPUT
-        if [ -z "$PACKAGE" ]; then
-          echo "❌ Package not found"
-          exit 1
-        fi
-        echo "📦 Found package: $PACKAGE"
+        # Find .deb package
+        DEB=$(find . -name "*.deb" -path "*/packages/*" | head -n 1)
+        echo "package=$DEB" >> $GITHUB_OUTPUT
+        echo "📦 Found package: $DEB"
 
-    - name: Upload package
+        # Find .dylib files
+        DYLIB=$(find .theos/obj -name "*.dylib" | head -n 1)
+        if [ -n "$DYLIB" ]; then
+            echo "dylib=$DYLIB" >> $GITHUB_OUTPUT
+            echo "🔧 Found dylib: $DYLIB"
+
+            # Copy dylib to root with simpler name
+            cp "$DYLIB" ./TwitchProxy.dylib
+            echo "dylib_simple=./TwitchProxy.dylib" >> $GITHUB_OUTPUT
+
+            # Get dylib info
+            echo "📋 Dylib info:"
+            file "$DYLIB"
+            lipo -info "$DYLIB" 2>/dev/null || echo "Single architecture"
+        else
+            echo "⚠️  No dylib found"
+        fi
+
+    - name: Upload package and dylib
       uses: actions/upload-artifact@v4
       with:
-        name: TwitchProxy-deb
-        path: ${{ steps.find-package.outputs.package }}
+        name: TwitchProxy-build
+        path: |
+          ${{ steps.find-files.outputs.package }}
+          ${{ steps.find-files.outputs.dylib_simple }}
         retention-days: 90
+        if-no-files-found: error
 
     - name: Get package info
       id: package-info
       run: |
-        PACKAGE=${{ steps.find-package.outputs.package }}
+        PACKAGE=${{ steps.find-files.outputs.package }}
         VERSION=$(dpkg-deb -I $PACKAGE | grep "Version:" | awk '{print $2}')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "📋 Package version: $VERSION"
@@ -100,7 +118,9 @@ jobs:
       with:
         tag_name: v${{ steps.package-info.outputs.version }}-${{ github.run_number }}
         name: TwitchProxy v${{ steps.package-info.outputs.version }}
-        files: ${{ steps.find-package.outputs.package }}
+        files: |
+          ${{ steps.find-files.outputs.package }}
+          ${{ steps.find-files.outputs.dylib_simple }}
         body: |
           ## 📱 TwitchProxy iOS Tweak v${{ steps.package-info.outputs.version }}
 
@@ -148,7 +168,8 @@ jobs:
       run: |
         echo "### ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "📦 **Package:** ${{ steps.find-package.outputs.package }}" >> $GITHUB_STEP_SUMMARY
+        echo "📦 **Package:** ${{ steps.find-files.outputs.package }}" >> $GITHUB_STEP_SUMMARY
+        echo "🔧 **Dylib:** ${{ steps.find-files.outputs.dylib_simple }}" >> $GITHUB_STEP_SUMMARY
         echo "🏷️ **Version:** ${{ steps.package-info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📥 Download" >> $GITHUB_STEP_SUMMARY
