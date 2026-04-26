@@ -90,7 +90,7 @@ jobs:
       id: package-info
       run: |
         PACKAGE=${{ steps.find-package.outputs.package }}
-        VERSION=$(dpkg-deb -I $PACKAGE | grep -oP 'Version: \K[\w.]+')
+        VERSION=$(dpkg-deb -I $PACKAGE | grep "Version:" | awk '{print $2}')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "📋 Package version: $VERSION"
 
