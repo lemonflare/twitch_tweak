@@ -2,7 +2,7 @@ Package: com.reyohoho.twitchproxy
 Name: TwitchProxy
 Version: 2.2.0
 Architecture: iphoneos-arm
-Description: Twitch proxy with 1080p/1440p support and ad blocking
+Description: Native Twitch HLS proxy with 1080p/1440p support and best-effort ad bypass
 Maintainer: ReYohoho
 Author: ReYohoho
 Section: Tweaks

@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: "URL to the decrypted IPA file (e.g., from Decrypt-Day, AppStore++, etc.)"
+        description: "URL to the decrypted IPA file"
         required: true
         type: string
         default: ""
 
       app_name:
-        description: "App Name (Optional)"
-        required: true
+        description: "App name override"
+        required: false
         type: string
         default: "Twitch"
 
@@ -22,7 +22,7 @@ on:
         default: ""
 
       display_name:
-        description: "Display Name for IPA"
+        description: "Display name for the output IPA"
         required: true
         type: string
         default: "Twitch+Proxy"
@@ -39,214 +39,169 @@ jobs:
       contents: write
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Theos
-      run: |
-        echo "THEOS=${{ github.workspace }}/theos" >> $GITHUB_ENV
+      - name: Configure Theos path
+        run: echo "THEOS=${{ github.workspace }}/theos" >> "$GITHUB_ENV"
 
-    - name: Cache Theos
-      id: theos
-      uses: actions/cache@v4
-      env:
-        cache-name: theos_cache_twitch
-      with:
-        path: theos/
-        key: ${{ env.cache-name }}
-        restore-keys: ${{ env.cache-name }}
+      - name: Cache Theos
+        id: theos
+        uses: actions/cache@v4
+        env:
+          cache-name: theos_cache_twitch
+        with:
+          path: theos/
+          key: ${{ env.cache-name }}
+          restore-keys: ${{ env.cache-name }}
 
-    - name: Install Theos
-      if: steps.theos.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: theos/theos
-        ref: master
-        path: theos
-        submodules: recursive
+      - name: Setup Theos
+        if: steps.theos.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          ref: master
+          path: theos
+          submodules: recursive
 
-    - name: Download iOS SDK
-      if: steps.theos.outputs.cache-hit != 'true'
-      run: |
-        git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
-        cd sdks
-        git sparse-checkout set --no-cone iPhoneOS16.5.sdk
-        git checkout
-        mv *.sdk $THEOS/sdks
+      - name: Download iOS SDK
+        if: steps.theos.outputs.cache-hit != 'true'
+        run: |
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+          cd sdks
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+          git checkout
+          mv *.sdk "$THEOS/sdks"
 
-    - name: Create JS bundle
-      run: |
-        mkdir -p resources/Library/Application\ Support/TwitchProxy
-        cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
+      - name: Bundle userscript reference
+        run: |
+          mkdir -p "resources/Library/Application Support/TwitchProxy"
+          cp twitch.user.js "resources/Library/Application Support/TwitchProxy/twitch_proxy.js"
 
-    - name: Install dependencies
-      run: |
-        brew install ldid dpkg
+      - name: Install dependencies
+        run: brew install ldid dpkg
 
-    - name: Build TwitchProxy.dylib
-      run: |
-        make clean
-        make package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+      - name: Build TwitchProxy.dylib
+        run: |
+          make clean
+          make package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
 
-    - name: Extract dylib from package
-      run: |
-        mkdir -p dylib_output
-        # Find and extract dylib from package
-        for deb in packages/*.deb; do
-          if [ -f "$deb" ]; then
-            dpkg -x "$deb" dylib_output/
-            break
+      - name: Extract dylib from package
+        run: |
+          mkdir -p dylib_output
+
+          for deb in packages/*.deb; do
+            if [ -f "$deb" ]; then
+              dpkg -x "$deb" dylib_output/
+              break
+            fi
+          done
+
+          find dylib_output -name "*.dylib" -exec cp {} . \;
+
+          DYLIB=$(find . -maxdepth 1 -name "*.dylib" | grep -v "\.dylib\." || true)
+          if [ -z "$DYLIB" ]; then
+            find .theos/obj -name "*.dylib" -exec cp {} . \;
           fi
-        done
 
-        # Copy dylib to workspace
-        find dylib_output -name "*.dylib" -exec cp {} . \;
+          ls -lh *.dylib
 
-        # Verify dylib
-        DYLIB=$(find . -maxdepth 1 -name "*.dylib" | grep -v "\.dylib\.")
-        if [ -z "$DYLIB" ]; then
-          # Try to find from .theos/obj directly
-          find .theos/obj -name "*.dylib" -exec cp {} . \;
-        fi
-
-        ls -lh *.dylib
-
-    - name: Download and validate IPA
-      run: |
-        if [ -z "${{ github.event.inputs.ipa_url }}" ]; then
-          echo "::error::IPA URL is required"
-          exit 1
-        fi
-
-        echo "Downloading IPA from: ${{ github.event.inputs.ipa_url }}"
-        wget "${{ github.event.inputs.ipa_url }}" --no-verbose -O input.ipa
-
-        file_type=$(file --mime-type -b input.ipa)
-        echo "File type: $file_type"
-
-        if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
-          echo "::error::Validation failed: The downloaded file is not a valid IPA. Detected type: $file_type."
-          exit 1
-        fi
-
-        # Get original file size
-        size_mb=$(stat -f%z input.ipa 2>/dev/null || stat -c%s input.ipa 2>/dev/null)
-        size_mb=$((size_mb / 1024 / 1024))
-        echo "IPA size: ${size_mb}MB"
-
-    - name: Install cyan
-      run: pipx install --force https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
-
-    - name: Inject TwitchProxy into IPA
-      run: |
-        # Find the dylib file
-        DYLIB=$(find . -maxdepth 1 -name "TwitchProxy.dylib" -o -name "com.*.dylib" | head -n 1)
-
-        if [ -z "$DYLIB" ]; then
-          echo "::error::TwitchProxy.dylib not found"
-          exit 1
-        fi
-
-        echo "Using dylib: $DYLIB"
-        ls -lh "$DYLIB"
-
-        # Prepare injection files
-        OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
-
-        # Keep the original bundle ID unless an override is explicitly provided.
-        # Changing it can break Twitch keychain/app-group state and authenticated features such as chat.
-        CYAN_ARGS=(-i input.ipa -o "$OUTPUT_NAME" -wef "$DYLIB")
-
-        if [ -n "${{ github.event.inputs.app_name }}" ]; then
-          CYAN_ARGS+=(-n "${{ github.event.inputs.app_name }}")
-        fi
-
-        if [ -n "${{ github.event.inputs.bundle_id }}" ]; then
-          CYAN_ARGS+=(-b "${{ github.event.inputs.bundle_id }}")
-        fi
-
-        cyan "${CYAN_ARGS[@]}"
-
-        # Verify output
-        if [ ! -f "$OUTPUT_NAME" ]; then
-          echo "::error::Output IPA not created"
-          exit 1
-        fi
-
-        # Get output file size
-        out_size=$(stat -f%z "$OUTPUT_NAME" 2>/dev/null || stat -c%s "$OUTPUT_NAME" 2>/dev/null)
-        out_size_mb=$((out_size / 1024 / 1024))
-        echo "Output IPA size: ${out_size_mb}MB"
-
-    - name: Verify dylib injection
-      run: |
-        OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
-
-        # Extract and verify
-        mkdir -p verify_ipa
-        cd verify_ipa
-        unzip -q "../$OUTPUT_NAME"
-
-        # Check for dylib
-        if find Payload -name "*.dylib" | grep -v "Frameworks" | grep -q .; then
-          echo "✅ Dylib found in IPA:"
-          find Payload -name "*.dylib" -not -path "*/Frameworks/*"
-        else
-          echo "::warning::No dylib found outside Frameworks"
-        fi
-
-        # Check executable
-        APP=$(find Payload -name "*.app" -type d | head -n 1)
-        if [ -n "$APP" ]; then
-          EXE=$(find "$APP" -type f -perm +111 | head -n 1)
-          if [ -n "$EXE" ]; then
-            echo "Executable: $EXE"
-            file "$EXE"
+      - name: Download and validate IPA
+        run: |
+          if [ -z "${{ github.event.inputs.ipa_url }}" ]; then
+            echo "::error::IPA URL is required"
+            exit 1
           fi
-        fi
 
-    - name: Upload to GitHub Releases
-      uses: softprops/action-gh-release@v3
-      with:
-        tag_name: twitch-proxy-${{ github.run_number }}
-        name: TwitchProxy IPA (${{ github.run_number }})
-        files: ${{ github.event.inputs.display_name }}.ipa
-        body: |
-          ## 📱 TwitchProxy Injected IPA
+          wget "${{ github.event.inputs.ipa_url }}" --no-verbose -O input.ipa
 
-          ### ⚙️ Configuration
-          - **App Name**: ${{ github.event.inputs.app_name }}
-          - **Display Name**: ${{ github.event.inputs.display_name }}
-          - **Bundle ID**: ${{ github.event.inputs.bundle_id }}
+          file_type=$(file --mime-type -b input.ipa)
+          echo "File type: $file_type"
 
-          ### ✨ Features
-          - 🎬 1080p/1440p 화질 지원
-          - 🚫 광고 차단 (VAFT)
-          - 🌐 프록시 서버 자동 선택
-          - 📺 Safari 및 Twitch 앱 지원
+          if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
+            echo "::error::The downloaded file is not a valid IPA. Detected type: $file_type."
+            exit 1
+          fi
 
-          ### 📋 Installation
+      - name: Install cyan
+        run: pipx install --force https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
 
-          **TrollStore (권장):**
-          1. IPA 다운로드
-          2. TrollStore로 설치
-          3. 앱 실행 시 TwitchProxy 자동 로드
+      - name: Inject TwitchProxy into IPA
+        run: |
+          DYLIB=$(find . -maxdepth 1 \( -name "TwitchProxy.dylib" -o -name "com.*.dylib" \) | head -n 1)
 
-          **Sideloadly/AltStore:**
-          1. IPA 다운로드
-          2. Sideloadly 또는 AltStore로 설치
-          3. 7일마다 재서명 필요
+          if [ -z "$DYLIB" ]; then
+            echo "::error::TwitchProxy.dylib not found"
+            exit 1
+          fi
 
-          ### ⚠️ Notes
-          - Jailbreak 불필요 (비-jailbreak 기기 지원)
-          - TrollStore로 설치하면 영구 사용 가능
-          - 인젝션된 dylib는 cyan 도구로 처리됨
+          OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
+          CYAN_ARGS=(-i input.ipa -o "$OUTPUT_NAME" -wef "$DYLIB")
 
-          ---
-          📢 Build #${{ github.run_number }}
-        draft: true
+          if [ -n "${{ github.event.inputs.app_name }}" ]; then
+            CYAN_ARGS+=(-n "${{ github.event.inputs.app_name }}")
+          fi
 
-    - name: Output Release URL
-      run: |
-        echo "::notice::✅ Release created!"
-        echo "::notice::📦 Download at: https://github.com/${{ github.repository }}/releases/tag/twitch-proxy-${{ github.run_number }}"
+          if [ -n "${{ github.event.inputs.bundle_id }}" ]; then
+            CYAN_ARGS+=(-b "${{ github.event.inputs.bundle_id }}")
+          fi
+
+          cyan "${CYAN_ARGS[@]}"
+
+          if [ ! -f "$OUTPUT_NAME" ]; then
+            echo "::error::Output IPA not created"
+            exit 1
+          fi
+
+      - name: Verify dylib injection
+        run: |
+          OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
+
+          mkdir -p verify_ipa
+          cd verify_ipa
+          unzip -q "../$OUTPUT_NAME"
+
+          if find Payload -name "*.dylib" | grep -v "Frameworks" | grep -q .; then
+            echo "Dylib found in IPA:"
+            find Payload -name "*.dylib" -not -path "*/Frameworks/*"
+          else
+            echo "::warning::No dylib found outside Frameworks"
+          fi
+
+          APP=$(find Payload -name "*.app" -type d | head -n 1)
+          if [ -n "$APP" ]; then
+            INFO="$APP/Info.plist"
+            /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO" || true
+            /usr/libexec/PlistBuddy -c "Print UISupportedInterfaceOrientations" "$INFO" || true
+          fi
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: twitch-proxy-${{ github.run_number }}
+          name: TwitchProxy IPA (${{ github.run_number }})
+          files: ${{ github.event.inputs.display_name }}.ipa
+          body: |
+            ## TwitchProxy Injected IPA
+
+            ### Configuration
+            - App name: ${{ github.event.inputs.app_name }}
+            - Display name: ${{ github.event.inputs.display_name }}
+            - Bundle ID override: ${{ github.event.inputs.bundle_id || 'none' }}
+
+            ### Features
+            - Native HLS playlist proxying for the Twitch iOS app
+            - 1080p/1440p access through ReYohoho proxy servers
+            - Server-side ad bypass request via `proxymode=adblock` (best effort, not full VAFT)
+            - OAuth/auth-token forwarding for proxy compatibility
+
+            ### Notes
+            - Leave the bundle ID override empty unless you know you need to change it.
+            - Changing the bundle ID can break Twitch login, chat, keychain, and app-group state.
+            - `proxymode=adblock` depends on proxy server support and may not block every Twitch ad.
+          draft: true
+
+      - name: Output Release URL
+        run: |
+          echo "::notice::Release created"
+          echo "::notice::Download at: https://github.com/${{ github.repository }}/releases/tag/twitch-proxy-${{ github.run_number }}"

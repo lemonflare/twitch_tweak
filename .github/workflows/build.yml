@@ -2,15 +2,15 @@ name: Build TwitchProxy iOS
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
     paths:
-      - 'twitch.user.js'
-      - 'Tweak.x'
-      - 'Makefile'
-      - 'control'
-      - '.github/workflows/**'
+      - "twitch.user.js"
+      - "Tweak.x"
+      - "Makefile"
+      - "control"
+      - ".github/workflows/**"
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -18,160 +18,134 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install Dependencies
-      run: brew install make ldid dpkg
+      - name: Install dependencies
+        run: brew install make ldid dpkg
 
-    - name: Set PATH environment variable
-      run: |
-        echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
-        echo "THEOS=${{ github.workspace }}/theos" >> $GITHUB_ENV
+      - name: Configure Theos path
+        run: |
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "THEOS=${{ github.workspace }}/theos" >> "$GITHUB_ENV"
 
-    - name: Cache Theos
-      id: theos
-      uses: actions/cache@v4
-      env:
-        cache-name: theos_cache_twitch
-      with:
-        path: theos/
-        key: ${{ env.cache-name }}
-        restore-keys: ${{ env.cache-name }}
+      - name: Cache Theos
+        id: theos
+        uses: actions/cache@v4
+        env:
+          cache-name: theos_cache_twitch
+        with:
+          path: theos/
+          key: ${{ env.cache-name }}
+          restore-keys: ${{ env.cache-name }}
 
-    - name: Setup Theos
-      if: steps.theos.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: theos/theos
-        ref: master
-        path: theos
-        submodules: recursive
+      - name: Setup Theos
+        if: steps.theos.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          ref: master
+          path: theos
+          submodules: recursive
 
-    - name: Download iOS SDK
-      if: steps.theos.outputs.cache-hit != 'true'
-      run: |
-        git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
-        cd sdks
-        git sparse-checkout set --no-cone iPhoneOS16.5.sdk
-        git checkout
-        mv *.sdk $THEOS/sdks
-        ls -la $THEOS/sdks/
+      - name: Download iOS SDK
+        if: steps.theos.outputs.cache-hit != 'true'
+        run: |
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+          cd sdks
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+          git checkout
+          mv *.sdk "$THEOS/sdks"
+          ls -la "$THEOS/sdks"
 
-    - name: Create JS bundle
-      run: |
-        mkdir -p resources/Library/Application\ Support/TwitchProxy
-        cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
+      - name: Bundle userscript reference
+        run: |
+          mkdir -p "resources/Library/Application Support/TwitchProxy"
+          cp twitch.user.js "resources/Library/Application Support/TwitchProxy/twitch_proxy.js"
 
-    - name: Build package
-      run: |
-        make clean
-        make package DEBUG=0 FINALPACKAGE=1
+      - name: Build package
+        run: |
+          make clean
+          make package DEBUG=0 FINALPACKAGE=1
 
-    - name: Find dylib and package
-      id: find-files
-      run: |
-        # Find .deb package
-        DEB=$(find . -name "*.deb" -path "*/packages/*" | head -n 1)
-        echo "package=$DEB" >> $GITHUB_OUTPUT
-        echo "📦 Found package: $DEB"
+      - name: Find artifacts
+        id: find-files
+        run: |
+          DEB=$(find . -name "*.deb" -path "*/packages/*" | head -n 1)
+          echo "package=$DEB" >> "$GITHUB_OUTPUT"
+          echo "Found package: $DEB"
 
-        # Find .dylib files
-        DYLIB=$(find .theos/obj -name "*.dylib" | head -n 1)
-        if [ -n "$DYLIB" ]; then
-            echo "dylib=$DYLIB" >> $GITHUB_OUTPUT
-            echo "🔧 Found dylib: $DYLIB"
-
-            # Copy dylib to root with simpler name
+          DYLIB=$(find .theos/obj -name "*.dylib" | head -n 1)
+          if [ -n "$DYLIB" ]; then
+            echo "dylib=$DYLIB" >> "$GITHUB_OUTPUT"
             cp "$DYLIB" ./TwitchProxy.dylib
-            echo "dylib_simple=./TwitchProxy.dylib" >> $GITHUB_OUTPUT
-
-            # Get dylib info
-            echo "📋 Dylib info:"
+            echo "dylib_simple=./TwitchProxy.dylib" >> "$GITHUB_OUTPUT"
             file "$DYLIB"
             lipo -info "$DYLIB" 2>/dev/null || echo "Single architecture"
-        else
-            echo "⚠️  No dylib found"
-        fi
+          else
+            echo "No dylib found"
+          fi
 
-    - name: Upload package and dylib
-      uses: actions/upload-artifact@v4
-      with:
-        name: TwitchProxy-build
-        path: |
-          ${{ steps.find-files.outputs.package }}
-          ${{ steps.find-files.outputs.dylib_simple }}
-        retention-days: 90
-        if-no-files-found: error
+      - name: Upload package and dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: TwitchProxy-build
+          path: |
+            ${{ steps.find-files.outputs.package }}
+            ${{ steps.find-files.outputs.dylib_simple }}
+          retention-days: 90
+          if-no-files-found: error
 
-    - name: Get package info
-      id: package-info
-      run: |
-        PACKAGE=${{ steps.find-files.outputs.package }}
-        VERSION=$(dpkg-deb -I $PACKAGE | grep "Version:" | awk '{print $2}')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "📋 Package version: $VERSION"
+      - name: Get package info
+        id: package-info
+        run: |
+          PACKAGE="${{ steps.find-files.outputs.package }}"
+          VERSION=$(dpkg-deb -I "$PACKAGE" | grep "Version:" | awk '{print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $VERSION"
 
-    - name: Create Release
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ steps.package-info.outputs.version }}-${{ github.run_number }}
-        name: TwitchProxy v${{ steps.package-info.outputs.version }}
-        files: |
-          ${{ steps.find-files.outputs.package }}
-          ${{ steps.find-files.outputs.dylib_simple }}
-        body: |
-          ## 📱 TwitchProxy iOS Tweak v${{ steps.package-info.outputs.version }}
+      - name: Create Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package-info.outputs.version }}-${{ github.run_number }}
+          name: TwitchProxy v${{ steps.package-info.outputs.version }}
+          files: |
+            ${{ steps.find-files.outputs.package }}
+            ${{ steps.find-files.outputs.dylib_simple }}
+          body: |
+            ## TwitchProxy iOS Tweak v${{ steps.package-info.outputs.version }}
 
-          ### ⚡ 설치 방법
+            ### Features
+            - Native HLS playlist proxying for Twitch iOS
+            - 1080p/1440p access through ReYohoho proxy servers
+            - Server-side ad bypass request via `proxymode=adblock` (best effort, not full VAFT)
+            - OAuth/auth-token forwarding for proxy compatibility
 
-          **터미널 앱 (New Terminal 2)에서:**
-          ```bash
-          dpkg -i TwitchProxy_*.deb
-          killall -9 SpringBoard
-          ```
+            ### Install
+            ```bash
+            dpkg -i TwitchProxy_*.deb
+            killall -9 SpringBoard
+            ```
 
-          **Filza에서:**
-          1. `.deb` 파일 탭
-          2. 우측 상단 "설치" 클릭
-          3. 재시작
+            ### Debug
+            ```bash
+            log stream --predicate 'process == "Twitch"' --level debug
+            ```
 
-          ### 📋 시스템 요구사항
-          - ✅ Jailbroken iOS 11.0+
-          - ✅ Substitute 또는 Substrate
+            Notes:
+            - This is a native AVFoundation/NSURLSession hook, not a WKWebView userscript injector.
+            - `proxymode=adblock` depends on proxy server support and may not block every Twitch ad.
+            - Source userscript reference: https://github.com/reyohoho/twitch_quality_proxy
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          ### ✨ 기능
-          - 🎬 1080p/1440p 화질 지원
-          - 🚫 광고 차단 (VAFT)
-          - 🌐 프록시 서버 자동 선택
-          - 📺 Twitch 앱 및 Safari 지원
-
-          ### 🔧 문제 해결
-          작동하지 않으면:
-          ```bash
-          # 재시작
-          killall -9 SpringBoard
-
-          # 로그 확인
-          log stream --predicate 'process == "Twitch"' --level debug
-          ```
-
-          ---
-          📢 원본 프로젝트: [ReYohoho/Twitch Proxy](https://github.com/reyohoho/twitch_quality_proxy)
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build summary
-      run: |
-        echo "### ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "📦 **Package:** ${{ steps.find-files.outputs.package }}" >> $GITHUB_STEP_SUMMARY
-        echo "🔧 **Dylib:** ${{ steps.find-files.outputs.dylib_simple }}" >> $GITHUB_STEP_SUMMARY
-        echo "🏷️ **Version:** ${{ steps.package-info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📥 Download" >> $GITHUB_STEP_SUMMARY
-        echo "- **Artifact:** Available in Actions run artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "- **Release:** Check [Releases](https://github.com/${{ github.repository }}/releases) page" >> $GITHUB_STEP_SUMMARY
+      - name: Build summary
+        run: |
+          echo "### Build Successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Package: ${{ steps.find-files.outputs.package }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dylib: ${{ steps.find-files.outputs.dylib_simple }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: ${{ steps.package-info.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"

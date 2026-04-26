@@ -4,6 +4,7 @@
 
 static NSArray<NSString *> *proxyServers = nil;
 static NSString *capturedAuthToken = nil;
+static NSString *const proxyAdBlockMode = @"adblock";
 
 static NSString *trimmedString(NSString *value) {
     if (!value || ![value isKindOfClass:[NSString class]]) return nil;
@@ -61,6 +62,16 @@ static NSString *encodedQueryValue(NSString *value) {
     NSMutableCharacterSet *allowed = [[NSCharacterSet URLQueryAllowedCharacterSet] mutableCopy];
     [allowed removeCharactersInString:@"&=+?"];
     return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed];
+}
+
+static NSString *appendQueryParameter(NSString *urlString, NSString *name, NSString *value) {
+    if (urlString.length == 0 || name.length == 0 || value.length == 0) return urlString;
+
+    NSString *needle = [name stringByAppendingString:@"="];
+    if ([urlString rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound) return urlString;
+
+    NSString *separator = [urlString containsString:@"?"] ? @"&" : @"?";
+    return [NSString stringWithFormat:@"%@%@%@=%@", urlString, separator, name, encodedQueryValue(value)];
 }
 
 static NSString *authTokenFromCookies(void) {
@@ -159,11 +170,10 @@ static NSURL *proxiedURLForURL(NSURL *originalURL) {
     if (proxyUrl.length == 0 || originalUrlString.length == 0) return originalURL;
 
     NSString *newUrlString = [proxyUrl stringByAppendingString:originalUrlString];
+    newUrlString = appendQueryParameter(newUrlString, @"proxymode", proxyAdBlockMode);
+
     NSString *authToken = currentAuthToken();
-    if (authToken.length > 0 && [newUrlString rangeOfString:@"auth=" options:NSCaseInsensitiveSearch].location == NSNotFound) {
-        NSString *separator = [newUrlString containsString:@"?"] ? @"&" : @"?";
-        newUrlString = [NSString stringWithFormat:@"%@%@auth=%@", newUrlString, separator, encodedQueryValue(authToken)];
-    }
+    if (authToken.length > 0) newUrlString = appendQueryParameter(newUrlString, @"auth", authToken);
 
     NSURL *newURL = [NSURL URLWithString:newUrlString];
     if (!newURL) {
