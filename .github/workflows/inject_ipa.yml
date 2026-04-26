@@ -199,6 +199,9 @@ jobs:
             - Leave the bundle ID override empty unless you know you need to change it.
             - Changing the bundle ID can break Twitch login, chat, keychain, and app-group state.
             - `proxymode=adblock` depends on proxy server support and may not block every Twitch ad.
+            - This project is unofficial and is not affiliated with Twitch Interactive, Inc.
+            - This repository does not provide modified IPA files, decrypted app binaries, or Twitch assets.
+            - Users are solely responsible for complying with Twitch's Terms of Service and applicable laws.
           draft: true
 
       - name: Output Release URL

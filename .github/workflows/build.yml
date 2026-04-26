@@ -136,6 +136,9 @@ jobs:
             Notes:
             - This is a native AVFoundation/NSURLSession hook, not a WKWebView userscript injector.
             - `proxymode=adblock` depends on proxy server support and may not block every Twitch ad.
+            - This project is unofficial and is not affiliated with Twitch Interactive, Inc.
+            - This repository does not provide modified IPA files, decrypted app binaries, or Twitch assets.
+            - Users are solely responsible for complying with Twitch's Terms of Service and applicable laws.
             - Source userscript reference: https://github.com/reyohoho/twitch_quality_proxy
           draft: false
           prerelease: false

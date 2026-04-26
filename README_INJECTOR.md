@@ -2,6 +2,10 @@
 
 `TwitchProxy.dylib`를 복호화된 Twitch IPA에 주입해 재패키징하는 도구입니다.
 
+## Disclaimer
+
+This tool is provided for educational and research purposes only. This repository does not provide, host, or distribute Twitch IPA files, decrypted app binaries, modified app packages, or Twitch copyrighted/trademark assets. Users must supply their own legally obtained app files and are solely responsible for complying with Twitch's Terms of Service and all applicable laws.
+
 ## 권장 방식
 
 GitHub Actions의 `Inject TwitchProxy into IPA` 워크플로를 사용하세요.
