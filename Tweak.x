@@ -9,6 +9,7 @@
 
 @interface WKWebView
 - (void)evaluateJavaScript:(NSString *)script completionHandler:(void (^)(id, NSError *))completionHandler;
+- (void)loadTwitchProxy;
 @end
 
 static NSString *kInjectedKey = @"com.reyohoho.twitch.injected";
@@ -20,8 +21,8 @@ static NSString *kInjectedKey = @"com.reyohoho.twitch.injected";
 
     UIView *view = (UIView *)self;
     if ([view respondsToSelector:@selector(setAssociatedObject:)]) {
-        if (objc_getAssociatedObject(self, kInjectedKey)) return;
-        objc_setAssociatedObject(self, kInjectedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (objc_getAssociatedObject(self, (__bridge const void *)kInjectedKey)) return;
+        objc_setAssociatedObject(self, (__bridge const void *)kInjectedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
     NSString *jsPath = [[NSBundle mainBundle] pathForResource:@"twitch_proxy" ofType:@"js"];
