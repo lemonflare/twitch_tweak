@@ -40,12 +40,10 @@ jobs:
 
     - name: 📥 Download iOS SDK
       run: |
-        # Download iOS SDK
+        # Download iOS SDK using theos-download-sdk
         sudo mkdir -p /opt/theos/sdks
-        cd /opt/theos/sdks
-        sudo curl -L -o iPhoneOS16.5.sdk.tar.xz "https://github.com/xybp888/iOS-SDKs/releases/download/iPhoneOS16.5-iPhoneOS16.5.1/iPhoneOS16.5.sdk.tar.xz"
-        sudo tar xf iPhoneOS16.5.sdk.tar.xz
-        sudo rm iPhoneOS16.5.sdk.tar.xz
+        cd /opt/theos/bin
+        sudo ./theos-download-sdk --latest
         ls -la /opt/theos/sdks/
 
     - name: 📝 Create JS bundle
