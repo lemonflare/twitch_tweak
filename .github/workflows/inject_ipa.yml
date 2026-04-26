@@ -79,7 +79,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        brew install ldid
+        brew install ldid dpkg
 
     - name: Build TwitchProxy.dylib
       run: |
@@ -99,6 +99,14 @@ jobs:
 
         # Copy dylib to workspace
         find dylib_output -name "*.dylib" -exec cp {} . \;
+
+        # Verify dylib
+        DYLIB=$(find . -maxdepth 1 -name "*.dylib" | grep -v "\.dylib\.")
+        if [ -z "$DYLIB" ]; then
+          # Try to find from .theos/obj directly
+          find .theos/obj -name "*.dylib" -exec cp {} . \;
+        fi
+
         ls -lh *.dylib
 
     - name: Download and validate IPA
