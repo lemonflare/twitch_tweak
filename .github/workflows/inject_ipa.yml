@@ -201,6 +201,7 @@ jobs:
             - `proxymode=adblock` depends on proxy server support and may not block every Twitch ad.
             - This project is unofficial and is not affiliated with Twitch Interactive, Inc.
             - This repository does not provide modified IPA files, decrypted app binaries, or Twitch assets.
+            - This draft output was generated from a user-supplied IPA URL. Do not publish it unless you have the legal right to distribute it.
             - Users are solely responsible for complying with Twitch's Terms of Service and applicable laws.
           draft: true
 

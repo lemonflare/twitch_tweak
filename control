@@ -1,10 +1,10 @@
-Package: com.reyohoho.twitchproxy
+Package: com.lemonflare.twitchproxy
 Name: TwitchProxy
-Version: 2.2.0
+Version: 1.0.0
 Architecture: iphoneos-arm
 Description: Native Twitch HLS proxy with 1080p/1440p support and best-effort ad bypass
-Maintainer: ReYohoho
-Author: ReYohoho
+Maintainer: lemonflare
+Author: lemonflare
 Section: Tweaks
 Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 11.0)
 Icon: file:///Library/PreferenceBundles/TwitchProxyPrefs.bundle/icon.png
