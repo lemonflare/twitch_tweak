@@ -72,13 +72,22 @@ static NSString* rewriteTwitchUrl(NSString *originalUrlString) {
     NSString *proxyUrl = proxyServers.firstObject;
     if (!proxyUrl) return originalUrlString;
 
-    // Use the first proxy (we can enhance this to check proxy health, but let's keep it simple)
+    // Prevent double-proxying!
+    // Check if the original URL already starts with one of our proxy servers,
+    // or simply if it already contains the proxy server domain.
+    for (NSString *proxy in proxyServers) {
+        if ([originalUrlString hasPrefix:proxy] || [originalUrlString containsString:@"rte.net.ru"]) {
+            return originalUrlString;
+        }
+    }
+
+    // Use the first proxy
     NSString *newUrlString = [proxyUrl stringByAppendingString:originalUrlString];
     
     // Get and append auth-token if present
     NSString *authToken = getAuthToken();
-    if (authToken && authToken.length > 0) {
-        NSString *separator = [originalUrlString containsString:@"?"] ? @"&" : @"?";
+    if (authToken && authToken.length > 0 && ![newUrlString containsString:@"auth="]) {
+        NSString *separator = [newUrlString containsString:@"?"] ? @"&" : @"?";
         NSString *encodedAuth = [authToken stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
         newUrlString = [NSString stringWithFormat:@"%@%@auth=%@", newUrlString, separator, encodedAuth];
     }
