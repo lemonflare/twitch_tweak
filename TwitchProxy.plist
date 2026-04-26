@@ -6,6 +6,7 @@
     <dict>
         <key>Bundles</key>
         <array>
+            <string>tv.twitch</string>
             <string>com.twitch.TwitchApp</string>
             <string>com.apple.mobilesafari</string>
             <string>com.google.chrome.ios</string>
