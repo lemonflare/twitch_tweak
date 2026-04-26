@@ -22,19 +22,19 @@ class Colors:
     BOLD = '\033[1m'
 
 def print_success(msg):
-    print(f"{Colors.GREEN}✅ {msg}{Colors.RESET}")
+    print(f"{Colors.GREEN}{msg}{Colors.RESET}")
 
 def print_error(msg):
-    print(f"{Colors.RED}❌ {msg}{Colors.RESET}")
+    print(f"{Colors.RED}{msg}{Colors.RESET}")
 
 def print_warning(msg):
-    print(f"{Colors.YELLOW}⚠️  {msg}{Colors.RESET}")
+    print(f"{Colors.YELLOW} {msg}{Colors.RESET}")
 
 def print_info(msg):
-    print(f"{Colors.BLUE}ℹ️  {msg}{Colors.RESET}")
+    print(f"{Colors.BLUE} {msg}{Colors.RESET}")
 
 def print_step(msg):
-    print(f"{Colors.BOLD}🔧 {msg}{Colors.RESET}")
+    print(f"{Colors.BOLD}{msg}{Colors.RESET}")
 
 def find_dylib():
     """Find TwitchProxy.dylib in current directory"""
@@ -186,7 +186,13 @@ def simple_inject(exe_path, dylib_path, app_dir):
         # Copy dylib to app bundle
         print_step("Dylib 복사 중...")
         shutil.copy2(dylib_path, dest_dylib)
-        print_success("Dylib 복사 완료")
+        
+        js_path = dylib_path.parent / "twitch.user.js"
+        if js_path.exists():
+            shutil.copy2(js_path, app_dir / "twitch.user.js")
+            print_success("Dylib 및 JS 스크립트 복사 완료")
+        else:
+            print_success("Dylib 복사 완료")
 
         # Read executable
         print_step("실행 파일 분석 중...")
@@ -271,7 +277,13 @@ def inject_ipa(ipa_path, dylib_path):
 
             print_step("Dylib 복사 중...")
             shutil.copy2(dylib_path, dest_dylib)
-            print_success("Dylib 복사 완료")
+            
+            js_path = dylib_path.parent / "twitch.user.js"
+            if js_path.exists():
+                shutil.copy2(js_path, app_dir / "twitch.user.js")
+                print_success("Dylib 및 JS 스크립트 복사 완료")
+            else:
+                print_success("Dylib 복사 완료")
             print_warning("실행 파일 수정이 필요합니다 (수동 또는 도구 설치)")
 
         else:
@@ -281,7 +293,13 @@ def inject_ipa(ipa_path, dylib_path):
 
             print_step("Dylib 복사 중...")
             shutil.copy2(dylib_path, dest_dylib)
-            print_success("Dylib 복사 완료")
+            
+            js_path = dylib_path.parent / "twitch.user.js"
+            if js_path.exists():
+                shutil.copy2(js_path, app_dir / "twitch.user.js")
+                print_success("Dylib 및 JS 스크립트 복사 완료")
+            else:
+                print_success("Dylib 복사 완료")
 
             # Inject using available tool
             tool_name, tool_path = tools[0]
@@ -322,10 +340,10 @@ def inject_ipa(ipa_path, dylib_path):
 
 def main():
     print()
-    print("╔═══════════════════════════════════════════════════════════╗")
-    print("║       TwitchProxy Dylib Injector for iOS Apps             ║")
-    print("║       Automatic IPA Injection Tool                        ║")
-    print("╚═══════════════════════════════════════════════════════════╝")
+    print("=" * 60)
+    print("TwitchProxy Dylib Injector for iOS Apps")
+    print("Automatic IPA Injection Tool")
+    print("=" * 60)
     print()
 
     # Check arguments
@@ -358,17 +376,17 @@ def main():
     if success:
         print()
         print("=" * 60)
-        print_success("인젝션 완료!")
+        print_success("Injection complete!")
         print()
-        print_info("다음 단계:")
-        print_info("1. 생성된 IPA 파일을 iOS 기기로 전송")
-        print_info("2. TrollStore, Sideloadly, AltStore 등으로 설치")
-        print_info("3. 앱 실행 시 TwitchProxy가 자동으로 로드됩니다")
+        print_info("Next steps:")
+        print_info("1. Transfer the generated IPA to your iOS device")
+        print_info("2. Install with TrollStore, Sideloadly, or AltStore")
+        print_info("3. TwitchProxy will load automatically when app launches")
         print()
         sys.exit(0)
     else:
         print()
-        print_error("인젝션 실패")
+        print_error("Injection failed")
         sys.exit(1)
 
 if __name__ == '__main__':

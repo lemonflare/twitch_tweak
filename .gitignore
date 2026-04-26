@@ -31,3 +31,11 @@ desktop.ini
 # Temporary files
 tmp/
 temp/
+check_twitch/
+test_extract/
+verify_ipa/
+dylib_output/
+
+# Injected IPAs (keep originals)
+*+TwitchProxy.ipa
+*+Proxy.ipa
