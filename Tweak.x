@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
 #import <substrate.h>
 
 static NSArray *proxyServers = nil;
@@ -19,7 +20,6 @@ static void loadProxyServers() {
     if ([[NSFileManager defaultManager] fileExistsAtPath:jsPath]) {
         NSString *jsCode = [NSString stringWithContentsOfFile:jsPath encoding:NSUTF8StringEncoding error:nil];
         if (jsCode) {
-            // Regex to find PROXY_SERVERS = [ ... ]
             NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"PROXY_SERVERS\\s*=\\s*\\[(.*?)\\];" options:NSRegularExpressionDotMatchesLineSeparators error:nil];
             NSTextCheckingResult *match = [regex firstMatchInString:jsCode options:0 range:NSMakeRange(0, jsCode.length)];
             
@@ -65,16 +65,17 @@ static NSString* getAuthToken() {
 }
 
 static NSString* rewriteTwitchUrl(NSString *originalUrlString) {
-    if (!originalUrlString || ![originalUrlString containsString:@"usher.ttvnw.net"]) {
+    if (!originalUrlString || ![originalUrlString isKindOfClass:[NSString class]]) {
+        return originalUrlString;
+    }
+    if (![originalUrlString containsString:@"usher.ttvnw.net"]) {
         return originalUrlString;
     }
 
     NSString *proxyUrl = proxyServers.firstObject;
     if (!proxyUrl) return originalUrlString;
 
-    // Prevent double-proxying!
-    // Check if the original URL already starts with one of our proxy servers,
-    // or simply if it already contains the proxy server domain.
+    // Prevent double-proxying
     for (NSString *proxy in proxyServers) {
         if ([originalUrlString hasPrefix:proxy] || [originalUrlString containsString:@"rte.net.ru"]) {
             return originalUrlString;
@@ -96,38 +97,52 @@ static NSString* rewriteTwitchUrl(NSString *originalUrlString) {
     return newUrlString;
 }
 
-// Hooking NSURL initializations to rewrite the URL string before it is instantiated
-%hook NSURL
-
-+ (instancetype)URLWithString:(NSString *)URLString {
-    NSString *newURLString = rewriteTwitchUrl(URLString);
-    return %orig(newURLString);
-}
-
-+ (instancetype)URLWithString:(NSString *)URLString relativeToURL:(NSURL *)baseURL {
-    if ([URLString containsString:@"usher.ttvnw.net"]) {
-        NSString *newURLString = rewriteTwitchUrl(URLString);
-        return %orig(newURLString, nil);
+static NSURL* getProxiedNSURL(NSURL *originalURL) {
+    if (!originalURL || ![originalURL isKindOfClass:[NSURL class]]) return originalURL;
+    NSString *absoluteString = originalURL.absoluteString;
+    if ([absoluteString containsString:@"usher.ttvnw.net"]) {
+        NSString *proxiedStr = rewriteTwitchUrl(absoluteString);
+        if (proxiedStr && ![proxiedStr isEqualToString:absoluteString]) {
+            return [NSURL URLWithString:proxiedStr];
+        }
     }
-    return %orig;
+    return originalURL;
 }
 
-- (instancetype)initWithString:(NSString *)URLString {
-    NSString *newURLString = rewriteTwitchUrl(URLString);
-    return %orig(newURLString);
-}
+// Hooking Networking and Media components is much safer than hooking NSURL
+// NSURL is a class cluster used everywhere in the system; hooking it can cause random UI/Chat crashes.
 
-- (instancetype)initWithString:(NSString *)URLString relativeToURL:(NSURL *)baseURL {
-    if ([URLString containsString:@"usher.ttvnw.net"]) {
-        NSString *newURLString = rewriteTwitchUrl(URLString);
-        return %orig(newURLString, nil);
-    }
-    return %orig;
+%hook NSURLRequest
+- (instancetype)initWithURL:(NSURL *)URL {
+    return %orig(getProxiedNSURL(URL));
 }
+- (instancetype)initWithURL:(NSURL *)URL cachePolicy:(NSURLRequestCachePolicy)cachePolicy timeoutInterval:(NSTimeInterval)timeoutInterval {
+    return %orig(getProxiedNSURL(URL), cachePolicy, timeoutInterval);
+}
+%end
 
+%hook NSMutableURLRequest
+- (instancetype)initWithURL:(NSURL *)URL {
+    return %orig(getProxiedNSURL(URL));
+}
+- (instancetype)initWithURL:(NSURL *)URL cachePolicy:(NSURLRequestCachePolicy)cachePolicy timeoutInterval:(NSTimeInterval)timeoutInterval {
+    return %orig(getProxiedNSURL(URL), cachePolicy, timeoutInterval);
+}
+%end
+
+%hook AVPlayerItem
+- (instancetype)initWithURL:(NSURL *)URL {
+    return %orig(getProxiedNSURL(URL));
+}
+%end
+
+%hook AVURLAsset
+- (instancetype)initWithURL:(NSURL *)URL options:(NSDictionary<NSString *,id> *)options {
+    return %orig(getProxiedNSURL(URL), options);
+}
 %end
 
 %ctor {
-    NSLog(@"[TwitchProxy] Native Tweak loaded");
+    NSLog(@"[TwitchProxy] Native Tweak loaded (Safe Hooks)");
     loadProxyServers();
 }
