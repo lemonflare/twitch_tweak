@@ -21,19 +21,36 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install Theos
+    - name: 🔧 Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y fakeroot curl perl git
-        bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
-        echo "THEOS=/opt/theos" >> $GITHUB_ENV
+        sudo apt-get install -y fakeroot curl perl git python3 python3-pip build-essential
 
-    - name: Create JS bundle
+    - name: 📦 Install Theos
+      run: |
+        # Clone Theos manually
+        sudo git clone --depth 1 --recursive https://github.com/theos/theos.git /opt/theos
+        sudo chown -R $USER /opt/theos
+        echo "THEOS=/opt/theos" >> $GITHUB_ENV
+        echo "THEOS_MAKE_PATH=/opt/theos/makefiles" >> $GITHUB_ENV
+
+        # Verify Theos installation
+        ls -la /opt/theos/
+        ls -la /opt/theos/makefiles/
+
+    - name: 📝 Create JS bundle
       run: |
         mkdir -p resources/Library/Application\ Support/TwitchProxy
         cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
 
-    - name: Build
+    - name: 🔨 Build package
+      run: |
+        echo "THEOS: $THEOS"
+        echo "THEOS_MAKE_PATH: $THEOS_MAKE_PATH"
+        export THEOS=/opt/theos
+        export THEOS_MAKE_PATH=/opt/theos/makefiles
+        make clean
+        make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
       run: |
         make clean
         make package FINALPACKAGE=1
