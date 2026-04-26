@@ -1,0 +1,33 @@
+# Theos
+.theos/
+obj/
+*.deb
+packages/
+
+# macOS
+.DS_Store
+._*
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.o
+*.dylib
+*.a
+
+# Temporary files
+tmp/
+temp/

@@ -1,0 +1,86 @@
+name: Build TwitchProxy iOS
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'twitch.user.js'
+      - 'Tweak.x'
+      - 'Makefile'
+      - 'control'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Theos
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fakeroot curl perl git
+        bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+        echo "THEOS=/opt/theos" >> $GITHUB_ENV
+
+    - name: Create JS bundle
+      run: |
+        mkdir -p resources/Library/Application\ Support/TwitchProxy
+        cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
+
+    - name: Build
+      run: |
+        make clean
+        make package FINALPACKAGE=1
+
+    - name: Find package
+      id: find-package
+      run: |
+        PACKAGE=$(find . -name "*.deb" -path "*/packages/*" | head -n 1)
+        echo "package=$PACKAGE" >> $GITHUB_OUTPUT
+        if [ -z "$PACKAGE" ]; then
+          echo "❌ Package not found"
+          exit 1
+        fi
+        echo "📦 Found package: $PACKAGE"
+
+    - name: Upload package
+      uses: actions/upload-artifact@v4
+      with:
+        name: TwitchProxy-deb
+        path: ${{ steps.find-package.outputs.package }}
+        retention-days: 30
+
+    - name: Create Release (on push to main)
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v2.2.0-${{ github.run_number }}
+        name: TwitchProxy v2.2.0
+        files: ${{ steps.find-package.outputs.package }}
+        body: |
+          ## TwitchProxy iOS Tweak v2.2.0
+
+          ### 설치 방법
+
+          1. `TwitchProxy_*.deb` 파일을 iOS 기기로 전송
+          2. 터미널 앱에서 실행: `dpkg -i TwitchProxy_*.deb`
+          3. 재시작: `killall -9 SpringBoard`
+
+          ### 시스템 요구사항
+          - Jailbroken iOS 11.0+
+          - Substitute 또는 Substrate
+
+          ### 기능
+          - 1080p/1440p 화질 지원
+          - 광고 차단 (VAFT)
+          - 프록시 서버 지원
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
