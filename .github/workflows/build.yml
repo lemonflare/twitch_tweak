@@ -8,57 +8,65 @@ on:
       - 'Tweak.x'
       - 'Makefile'
       - 'control'
-      - '.github/workflows/build.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: 🔧 Install dependencies
+    - name: Install Dependencies
+      run: brew install make ldid dpkg
+
+    - name: Set PATH environment variable
       run: |
-        sudo apt-get update
-        sudo apt-get install -y fakeroot curl perl git python3 python3-pip build-essential
+        echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+        echo "THEOS=${{ github.workspace }}/theos" >> $GITHUB_ENV
 
-    - name: 📦 Install Theos
+    - name: Cache Theos
+      id: theos
+      uses: actions/cache@v4
+      env:
+        cache-name: theos_cache_twitch
+      with:
+        path: theos/
+        key: ${{ env.cache-name }}
+        restore-keys: ${{ env.cache-name }}
+
+    - name: Setup Theos
+      if: steps.theos.outputs.cache-hit != 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: theos/theos
+        ref: master
+        path: theos
+        submodules: recursive
+
+    - name: Download iOS SDK
+      if: steps.theos.outputs.cache-hit != 'true'
       run: |
-        # Clone Theos manually
-        sudo git clone --depth 1 --recursive https://github.com/theos/theos.git /opt/theos
-        sudo chown -R $USER /opt/theos
-        echo "THEOS=/opt/theos" >> $GITHUB_ENV
-        echo "THEOS_MAKE_PATH=/opt/theos/makefiles" >> $GITHUB_ENV
+        git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+        cd sdks
+        git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+        git checkout
+        mv *.sdk $THEOS/sdks
+        ls -la $THEOS/sdks/
 
-        # Verify Theos installation
-        ls -la /opt/theos/
-        ls -la /opt/theos/makefiles/
-
-    - name: 📥 Download iOS SDK
-      run: |
-        # Download iOS SDK using theos-download-sdk
-        sudo mkdir -p /opt/theos/sdks
-        cd /opt/theos/bin
-        sudo ./theos-download-sdk --latest
-        ls -la /opt/theos/sdks/
-
-    - name: 📝 Create JS bundle
+    - name: Create JS bundle
       run: |
         mkdir -p resources/Library/Application\ Support/TwitchProxy
         cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
 
-    - name: 🔨 Build package
+    - name: Build package
       run: |
-        echo "THEOS: $THEOS"
-        echo "THEOS_MAKE_PATH: $THEOS_MAKE_PATH"
-        export THEOS=/opt/theos
-        export THEOS_MAKE_PATH=/opt/theos/makefiles
         make clean
-        make package FINALPACKAGE=1
+        make package DEBUG=0 FINALPACKAGE=1
 
     - name: Find package
       id: find-package
@@ -76,33 +84,73 @@ jobs:
       with:
         name: TwitchProxy-deb
         path: ${{ steps.find-package.outputs.package }}
-        retention-days: 30
+        retention-days: 90
 
-    - name: Create Release (on push to main)
+    - name: Get package info
+      id: package-info
+      run: |
+        PACKAGE=${{ steps.find-package.outputs.package }}
+        VERSION=$(dpkg-deb -I $PACKAGE | grep -oP 'Version: \K[\w.]+')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📋 Package version: $VERSION"
+
+    - name: Create Release
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v2.2.0-${{ github.run_number }}
-        name: TwitchProxy v2.2.0
+        tag_name: v${{ steps.package-info.outputs.version }}-${{ github.run_number }}
+        name: TwitchProxy v${{ steps.package-info.outputs.version }}
         files: ${{ steps.find-package.outputs.package }}
         body: |
-          ## TwitchProxy iOS Tweak v2.2.0
+          ## 📱 TwitchProxy iOS Tweak v${{ steps.package-info.outputs.version }}
 
-          ### 설치 방법
+          ### ⚡ 설치 방법
 
-          1. `TwitchProxy_*.deb` 파일을 iOS 기기로 전송
-          2. 터미널 앱에서 실행: `dpkg -i TwitchProxy_*.deb`
-          3. 재시작: `killall -9 SpringBoard`
+          **터미널 앱 (New Terminal 2)에서:**
+          ```bash
+          dpkg -i TwitchProxy_*.deb
+          killall -9 SpringBoard
+          ```
 
-          ### 시스템 요구사항
-          - Jailbroken iOS 11.0+
-          - Substitute 또는 Substrate
+          **Filza에서:**
+          1. `.deb` 파일 탭
+          2. 우측 상단 "설치" 클릭
+          3. 재시작
 
-          ### 기능
-          - 1080p/1440p 화질 지원
-          - 광고 차단 (VAFT)
-          - 프록시 서버 지원
+          ### 📋 시스템 요구사항
+          - ✅ Jailbroken iOS 11.0+
+          - ✅ Substitute 또는 Substrate
+
+          ### ✨ 기능
+          - 🎬 1080p/1440p 화질 지원
+          - 🚫 광고 차단 (VAFT)
+          - 🌐 프록시 서버 자동 선택
+          - 📺 Twitch 앱 및 Safari 지원
+
+          ### 🔧 문제 해결
+          작동하지 않으면:
+          ```bash
+          # 재시작
+          killall -9 SpringBoard
+
+          # 로그 확인
+          log stream --predicate 'process == "Twitch"' --level debug
+          ```
+
+          ---
+          📢 원본 프로젝트: [ReYohoho/Twitch Proxy](https://github.com/reyohoho/twitch_quality_proxy)
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build summary
+      run: |
+        echo "### ✅ Build Successful!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📦 **Package:** ${{ steps.find-package.outputs.package }}" >> $GITHUB_STEP_SUMMARY
+        echo "🏷️ **Version:** ${{ steps.package-info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📥 Download" >> $GITHUB_STEP_SUMMARY
+        echo "- **Artifact:** Available in Actions run artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- **Release:** Check [Releases](https://github.com/${{ github.repository }}/releases) page" >> $GITHUB_STEP_SUMMARY
