@@ -77,10 +77,14 @@ jobs:
         mkdir -p resources/Library/Application\ Support/TwitchProxy
         cp twitch.user.js resources/Library/Application\ Support/TwitchProxy/twitch_proxy.js
 
+    - name: Install dependencies
+      run: |
+        brew install ldid
+
     - name: Build TwitchProxy.dylib
       run: |
         make clean
-        make package DEBUG=0 FINALPACKAGE=1
+        make package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
 
     - name: Extract dylib from package
       run: |
