@@ -35,6 +35,8 @@ jobs:
   inject_and_package:
     name: Inject TwitchProxy and Package
     runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout repository
