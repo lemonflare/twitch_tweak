@@ -4,15 +4,9 @@
 
 static NSArray *proxyServers = nil;
 
-// Function to extract PROXY_SERVERS from the twitch.user.js file
 static void loadProxyServers() {
-    // 1. Try to load from the main bundle (if injected via inject_dylib.py)
     NSString *jsPath = [[NSBundle mainBundle] pathForResource:@"twitch.user" ofType:@"js"];
-    if (!jsPath) {
-        jsPath = [[NSBundle mainBundle] pathForResource:@"twitch_proxy" ofType:@"js"];
-    }
-    
-    // 2. Try to load from jailbreak tweak path
+    if (!jsPath) jsPath = [[NSBundle mainBundle] pathForResource:@"twitch_proxy" ofType:@"js"];
     if (![[NSFileManager defaultManager] fileExistsAtPath:jsPath]) {
         jsPath = @"/var/jb/Library/Application Support/TwitchProxy/twitch_proxy.js";
     }
@@ -31,12 +25,8 @@ static void loadProxyServers() {
                 NSMutableArray *servers = [NSMutableArray array];
                 for (NSTextCheckingResult *urlMatch in urlMatches) {
                     NSRange range = [urlMatch rangeAtIndex:1];
-                    if (range.location == NSNotFound) {
-                        range = [urlMatch rangeAtIndex:2];
-                    }
-                    if (range.location != NSNotFound) {
-                        [servers addObject:[arrayContent substringWithRange:range]];
-                    }
+                    if (range.location == NSNotFound) range = [urlMatch rangeAtIndex:2];
+                    if (range.location != NSNotFound) [servers addObject:[arrayContent substringWithRange:range]];
                 }
                 
                 if (servers.count > 0) {
@@ -48,44 +38,50 @@ static void loadProxyServers() {
         }
     }
     
-    // Fallback if parsing fails or file is missing
     proxyServers = @[ @"https://proxy4.rte.net.ru/", @"https://proxy7.rte.net.ru/", @"https://proxy5.rte.net.ru/", @"https://proxy6.rte.net.ru/" ];
     NSLog(@"[TwitchProxy] Using default proxy servers: %@", proxyServers);
 }
 
-// Function to get the auth-token from cookies
 static NSString* getAuthToken() {
     NSHTTPCookieStorage *cookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
     for (NSHTTPCookie *cookie in [cookieStorage cookies]) {
-        if ([[cookie name] isEqualToString:@"auth-token"]) {
-            return [cookie value];
-        }
+        if ([[cookie name] isEqualToString:@"auth-token"]) return [cookie value];
     }
     return nil;
 }
 
 static NSString* rewriteTwitchUrl(NSString *originalUrlString) {
-    if (!originalUrlString || ![originalUrlString isKindOfClass:[NSString class]]) {
-        return originalUrlString;
-    }
-    if (![originalUrlString containsString:@"usher.ttvnw.net"]) {
-        return originalUrlString;
-    }
+    if (!originalUrlString || ![originalUrlString isKindOfClass:[NSString class]]) return originalUrlString;
+    if (![originalUrlString containsString:@"usher.ttvnw.net"]) return originalUrlString;
 
     NSString *proxyUrl = proxyServers.firstObject;
     if (!proxyUrl) return originalUrlString;
 
-    // Prevent double-proxying
+    // Prevent double proxying
     for (NSString *proxy in proxyServers) {
-        if ([originalUrlString hasPrefix:proxy] || [originalUrlString containsString:@"rte.net.ru"]) {
+        NSString *proxyDomain = [proxy stringByReplacingOccurrencesOfString:@"https://" withString:@""];
+        proxyDomain = [proxyDomain stringByReplacingOccurrencesOfString:@"http://" withString:@""];
+        if ([originalUrlString containsString:proxyDomain] || [originalUrlString containsString:@"rte.net.ru"]) {
             return originalUrlString;
         }
     }
 
-    // Use the first proxy
-    NSString *newUrlString = [proxyUrl stringByAppendingString:originalUrlString];
+    // Preserve custom schemes like twitch-hls:// used by AVAssetResourceLoaderDelegate
+    NSString *scheme = @"https://";
+    NSString *urlWithoutScheme = originalUrlString;
+    NSRange schemeRange = [originalUrlString rangeOfString:@"://"];
+    if (schemeRange.location != NSNotFound) {
+        scheme = [originalUrlString substringToIndex:schemeRange.location + 3];
+        urlWithoutScheme = [originalUrlString substringFromIndex:schemeRange.location + 3];
+    }
+
+    NSString *proxyDomainPath = [proxyUrl stringByReplacingOccurrencesOfString:@"https://" withString:@""];
+    proxyDomainPath = [proxyDomainPath stringByReplacingOccurrencesOfString:@"http://" withString:@""];
+    if (![proxyDomainPath hasSuffix:@"/"]) proxyDomainPath = [proxyDomainPath stringByAppendingString:@"/"];
+
+    // Format: [original scheme][proxy domain/path]https://[original url without scheme]
+    NSString *newUrlString = [NSString stringWithFormat:@"%@%@https://%@", scheme, proxyDomainPath, urlWithoutScheme];
     
-    // Get and append auth-token if present
     NSString *authToken = getAuthToken();
     if (authToken && authToken.length > 0 && ![newUrlString containsString:@"auth="]) {
         NSString *separator = [newUrlString containsString:@"?"] ? @"&" : @"?";
@@ -109,40 +105,78 @@ static NSURL* getProxiedNSURL(NSURL *originalURL) {
     return originalURL;
 }
 
-// Hooking Networking and Media components is much safer than hooking NSURL
-// NSURL is a class cluster used everywhere in the system; hooking it can cause random UI/Chat crashes.
-
-%hook NSURLRequest
-- (instancetype)initWithURL:(NSURL *)URL {
-    return %orig(getProxiedNSURL(URL));
+static NSURLRequest* getProxiedNSURLRequest(NSURLRequest *originalRequest) {
+    if (!originalRequest) return originalRequest;
+    NSURL *newURL = getProxiedNSURL(originalRequest.URL);
+    if (newURL != originalRequest.URL) {
+        NSMutableURLRequest *newReq = [originalRequest mutableCopy];
+        newReq.URL = newURL;
+        return [newReq copy];
+    }
+    return originalRequest;
 }
+
+// ----------------------------------------------------
+// NSURLSession Hooks (Catches Swift URLRequest networking)
+// ----------------------------------------------------
+%hook NSURLSession
+
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
+    return %orig(getProxiedNSURLRequest(request));
+}
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(id)completionHandler {
+    return %orig(getProxiedNSURLRequest(request), completionHandler);
+}
+- (NSURLSessionDataTask *)dataTaskWithURL:(NSURL *)url {
+    return %orig(getProxiedNSURL(url));
+}
+- (NSURLSessionDataTask *)dataTaskWithURL:(NSURL *)url completionHandler:(id)completionHandler {
+    return %orig(getProxiedNSURL(url), completionHandler);
+}
+%end
+
+// ----------------------------------------------------
+// NSURLRequest / NSMutableURLRequest Hooks
+// ----------------------------------------------------
+%hook NSURLRequest
++ (instancetype)requestWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
+- (instancetype)initWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
 - (instancetype)initWithURL:(NSURL *)URL cachePolicy:(NSURLRequestCachePolicy)cachePolicy timeoutInterval:(NSTimeInterval)timeoutInterval {
     return %orig(getProxiedNSURL(URL), cachePolicy, timeoutInterval);
 }
 %end
 
 %hook NSMutableURLRequest
-- (instancetype)initWithURL:(NSURL *)URL {
-    return %orig(getProxiedNSURL(URL));
-}
++ (instancetype)requestWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
+- (instancetype)initWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
 - (instancetype)initWithURL:(NSURL *)URL cachePolicy:(NSURLRequestCachePolicy)cachePolicy timeoutInterval:(NSTimeInterval)timeoutInterval {
     return %orig(getProxiedNSURL(URL), cachePolicy, timeoutInterval);
 }
 %end
 
+// ----------------------------------------------------
+// AVFoundation Hooks (Catches direct media player loads)
+// ----------------------------------------------------
+%hook AVPlayer
++ (instancetype)playerWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
+- (instancetype)initWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
+%end
+
 %hook AVPlayerItem
-- (instancetype)initWithURL:(NSURL *)URL {
-    return %orig(getProxiedNSURL(URL));
-}
++ (instancetype)playerItemWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
+- (instancetype)initWithURL:(NSURL *)URL { return %orig(getProxiedNSURL(URL)); }
 %end
 
 %hook AVURLAsset
++ (instancetype)URLAssetWithURL:(NSURL *)URL options:(NSDictionary<NSString *,id> *)options {
+    return %orig(getProxiedNSURL(URL), options);
+}
 - (instancetype)initWithURL:(NSURL *)URL options:(NSDictionary<NSString *,id> *)options {
     return %orig(getProxiedNSURL(URL), options);
 }
 %end
 
 %ctor {
-    NSLog(@"[TwitchProxy] Native Tweak loaded (Safe Hooks)");
+    NSLog(@"[TwitchProxy] Native Tweak loaded (Comprehensive Hooks)");
     loadProxyServers();
 }
