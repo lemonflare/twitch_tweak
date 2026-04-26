@@ -7,6 +7,6 @@ TWEAK_NAME = TwitchProxy
 
 TwitchProxy_FILES = Tweak.x
 TwitchProxy_CFLAGS = -fobjc-arc
-TwitchProxy_FRAMEWORKS = Foundation UIKit JavaScriptCore
+TwitchProxy_FRAMEWORKS = Foundation AVFoundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk

@@ -16,10 +16,10 @@ on:
         default: "Twitch"
 
       bundle_id:
-        description: "BundleID (Optional - usually not needed to change)"
-        required: true
+        description: "Bundle ID override (leave empty to keep the original app ID)"
+        required: false
         type: string
-        default: "com.twitch.TwitchApp"
+        default: ""
 
       display_name:
         description: "Display Name for IPA"
@@ -153,12 +153,19 @@ jobs:
         # Prepare injection files
         OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
 
-        # Inject with cyan
-        cyan -i input.ipa \
-              -o "$OUTPUT_NAME" \
-              -wef "$DYLIB" \
-              -n "${{ github.event.inputs.app_name }}" \
-              -b ${{ github.event.inputs.bundle_id }}
+        # Keep the original bundle ID unless an override is explicitly provided.
+        # Changing it can break Twitch keychain/app-group state and authenticated features such as chat.
+        CYAN_ARGS=(-i input.ipa -o "$OUTPUT_NAME" -wef "$DYLIB")
+
+        if [ -n "${{ github.event.inputs.app_name }}" ]; then
+          CYAN_ARGS+=(-n "${{ github.event.inputs.app_name }}")
+        fi
+
+        if [ -n "${{ github.event.inputs.bundle_id }}" ]; then
+          CYAN_ARGS+=(-b "${{ github.event.inputs.bundle_id }}")
+        fi
+
+        cyan "${CYAN_ARGS[@]}"
 
         # Verify output
         if [ ! -f "$OUTPUT_NAME" ]; then

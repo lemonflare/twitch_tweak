@@ -1,192 +1,96 @@
 # TwitchProxy iOS Tweak
 
-![Build Status](https://github.com/yourusername/twitch_tweak/workflows/Build%20TwitchProxy%20iOS/badge.svg)
-![Version](https://img.shields.io/badge/version-2.2.0-purple.svg)
-![Platform](https://img.shields.io/badge/platform-iOS%2011.0%2B-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+Twitch iOS 앱의 네이티브 HLS 재생 요청을 프록시 서버로 우회시키는 iOS tweak입니다.
 
-Twitch 프록시 userscript를 iOS용 dylib/deb 패키지로 변환한 프로젝트입니다.
+이 프로젝트는 `reyohoho/twitch_quality_proxy`의 `twitch.user.js`를 참고하지만, iOS 네이티브 Twitch 앱은 영상 재생에 WKWebView userscript를 사용하지 않습니다. 실제 스트림 요청은 AVFoundation/NSURLSession 경로에서 발생하므로 `Tweak.x`에서 Objective-C 런타임 후킹으로 `usher.ttvnw.net`의 HLS playlist 요청만 재작성합니다.
 
-## ✨ 기능
+## 현재 동작
 
-- ✅ 1080p/1440p 화질 지원
-- ✅ 광고 차단 (VAFT)
-- ✅ 프록시 서버 지원
-- ✅ Twitch 앱 및 Safari 지원
+- `AVURLAsset`, `AVPlayer`, `AVPlayerItem`, `NSURLSession`, `NSURLRequest` 계층에서 HLS URL을 감지합니다.
+- 대상은 `http/https` 스킴의 `usher.ttvnw.net` 호스트이며, `.m3u8` playlist 요청만 프록시합니다.
+- `picture-by-picture` 요청은 건드리지 않습니다. Twitch 앱의 채팅/미니플레이어/레이아웃 부작용을 줄이기 위한 제한입니다.
+- Twitch 관련 네이티브 요청에서 `Authorization: OAuth/Bearer ...` 또는 `auth-token` 쿠키를 감지해 프록시 `auth=` 파라미터에 사용합니다.
+- 프록시 서버 목록은 앱 번들 또는 tweak 리소스에 포함된 `twitch.user.js`의 `PROXY_SERVERS` 배열에서 읽고, 없으면 기본 서버 목록을 사용합니다.
 
-## 📥 다운로드
+## 중요한 제한
 
-### GitHub Actions (추천)
-
-[📦 Latest Release](https://github.com/yourusername/twitch_tweak/releases/latest)에서 `.deb` 파일을 다운로드하세요.
-
-자동으로 빌드된 패키지는 [Actions](https://github.com/yourusername/twitch_tweak/actions) 페이지에서도 다운로드 가능합니다.
-
-## 📋 시스템 요구사항
-
-- **Jailbroken iOS device** (checkra1n, unc0ver, palera1n, etc.)
-- **iOS 11.0 이상**
-- **Theos** (빌드용)
-- **Linux/macOS** 또는 **WSL**
-
-## 🔨 빌드 방법
-
-### GitHub에서 직접 다운로드 (가장 쉬움)
-
-1. 이 저장소를 포크하세요
-2. Actions 탭으로 이동
-3. "Build TwitchProxy iOS" 워크플로우 실행
-4. 생성된 `.deb` 파일을 다운로드
-
-### 로컬에서 빌드
-
-### Linux/macOS
-
-```bash
-# 1. Theos 설치 (없는 경우)
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
-
-# 2. 빌드 스크립트 실행
-./build.sh
-```
-
-### Windows (WSL)
-
-```bash
-# WSL에서 실행
-bash build.sh
-```
-
-### 수동 빌드
-
-```bash
-export THEOS=/opt/theos  # 또는 $HOME/theos
-make package
-```
-
-## 설치 방법
-
-### 1. DEB 파일 전송
-
-빌드된 `TwitchProxy_2.2.0.deb` 파일을 iOS 기기로 전송:
-
-- **AirDrop** (지원되는 경우)
-- **iFunBox**, **iTools**, **3uTools**
-- **SCP/SFTP**: `scp TwitchProxy_2.2.0.deb root@192.168.1.100:/var/root/`
-
-### 2. iOS 기기에서 설치
-
-**터미널 앱 (New Terminal 2, iShell 등)에서:**
-
-```bash
-# 디렉토리 이동 (필요한 경우)
-cd /var/root/
-
-# 패키지 설치
-dpkg -i TwitchProxy_2.2.0.deb
-
-# 또는
-apt install ./TwitchProxy_2.2.0.deb
-
-# 재시작 (respring)
-killall -9 SpringBoard
-# 또는 uicache
-```
-
-**Filza에서:**
-1. `.deb` 파일 탭
-2. 상단 우측의 "설치" 버튼 클릭
-3. 재시작
-
-### 3. 동작 확인
-
-1. 재시작 후 Safari 또는 Twitch 앱 실행
-2. https://www.twitch.tv 방문
-3. 플레이어 설정 메뉴 확인
-4. "ReYohoho Proxy" 패널이 표시되어야 함
+- `twitch.user.js`의 Web Worker/VAFT/UI 로직이 iOS 앱 안에서 그대로 실행되는 구조가 아닙니다.
+- 이 tweak은 현재 네이티브 HLS URL 프록시가 핵심이며, 브라우저 userscript와 동일한 광고 제거/설정 UI를 제공하지 않습니다.
+- IPA 재패키징 시 bundle id를 바꾸면 Twitch 로그인/키체인/app group 상태가 깨져 채팅 로딩 같은 인증 기반 기능이 실패할 수 있습니다. 기본적으로 원본 bundle id를 유지하세요.
 
 ## 파일 구조
 
-```
+```text
 twitch_tweak/
-├── Makefile              # Theos 빌드 설정
-├── Tweak.x               # Objective-C++ tweak 코드
-├── control               # DEB 패키지 메타데이터
-├── build.sh              # 빌드 스크립트
-├── twitch.user.js        # 원본 userscript
-└── README.md             # 이 파일
+├── Tweak.x                         # 네이티브 Objective-C 후킹 코드
+├── Makefile                        # Theos 빌드 설정
+├── TwitchProxy.plist               # Substrate 필터
+├── twitch.user.js                  # 프록시 목록 참고용 원본 userscript
+├── build.sh                        # DEB 빌드 스크립트
+├── inject_dylib.py                 # 로컬 IPA dylib 주입 도구
+├── inject.bat                      # Windows 드래그 앤 드롭 래퍼
+└── .github/workflows/inject_ipa.yml # GitHub Actions IPA 주입 워크플로
 ```
 
-## 작동 원리
+## 빌드
 
-1. **dylib 인젝션**: mobilesubstrate를 사용하여 앱 프로세스에 코드 인젝션
-2. **WebView 후킹**: `WebView`와 `WKWebView`의 메서드를 후킹
-3. **JavaScript 주입**: userscript를 WebView에 인젝션하여 실행
-
-## 제거 방법
+Theos가 설치된 macOS 또는 Linux/WSL 환경에서 실행합니다.
 
 ```bash
-# 터미널에서
-dpkg -r com.reyohoho.twitchproxy
-
-# 또는
-apt remove com.reyohoho.twitchproxy
-
-# 재시작
-killall -9 SpringBoard
+export THEOS=/opt/theos
+make clean
+make package
 ```
+
+또는:
+
+```bash
+bash build.sh
+```
+
+빌드 결과로 `.deb` 패키지와 `TwitchProxy.dylib`를 얻을 수 있습니다.
+
+## IPA 주입
+
+GitHub Actions의 `Inject TwitchProxy into IPA` 워크플로를 권장합니다.
+
+1. `ipa_url`에 복호화된 원본 Twitch IPA URL을 입력합니다.
+2. `bundle_id`는 특별한 이유가 없으면 비워둡니다.
+3. 생성된 IPA를 TrollStore, Sideloadly, AltStore 등으로 설치합니다.
+
+로컬에서 직접 주입하려면:
+
+```bash
+python inject_dylib.py Twitch.ipa
+```
+
+## 디버깅
+
+iOS 기기에서 로그를 확인합니다.
+
+```bash
+log stream --predicate 'process == "Twitch"' --level debug
+```
+
+확인할 로그:
+
+- `[TwitchProxy] Native tweak loaded`
+- `[TwitchProxy] Loaded ... proxy servers from JS`
+- `[TwitchProxy] Captured Twitch auth token from native request`
+- `[TwitchProxy] Proxied HLS request: ...`
 
 ## 문제 해결
 
-### 빌드 실패
+- 영상만 프록시되고 채팅이 안 뜨면 IPA 주입 과정에서 bundle id가 바뀌었는지 먼저 확인하세요.
+- 가로보기에서 레이아웃이 깨지면 `Info.plist`의 `UISupportedInterfaceOrientations`가 원본 IPA와 동일한지 확인하세요.
+- 프록시 로그가 없으면 dylib가 실제 Mach-O에 로드되어 있는지, `TwitchProxy.dylib`가 앱 번들에 포함되어 있는지 확인하세요.
+- 영상 재생 URL이 계속 원본 `usher.ttvnw.net`로 보이면 앱 버전에서 다른 API 경로를 쓰는지 로그로 실제 요청 URL을 확인해야 합니다.
 
-```bash
-# Theos 재설치
-sudo rm -rf /opt/theos
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+## 참고
 
-# 의존성 설치
-sudo apt-get install -y git perl fakeroot
-```
+- 원본 userscript: <https://github.com/reyohoho/twitch_quality_proxy>
+- Theos: <https://theos.dev>
 
-### 설치 후 작동하지 않음
+## License
 
-1. **재시작 확인**: `killall -9 SpringBoard`
-2. **Substrate 확인**: Cydia에서 Substitute 또는 Substitute가 설치되어 있는지 확인
-3. **로그 확인**:
-   ```bash
-   log stream --predicate 'process == "Twitch"' --level debug
-   ```
-
-### 특정 앱에서만 작동
-
-`Tweak.x`의 bundle identifier 필터를 수정:
-
-```objc
-if ([bundleID containsString:@"twitch"] || [bundleID containsString:@"video"]) {
-    // ...
-}
-```
-
-## 크레딧
-
-- **원본 userscript**: [ReYohoho Twitch Proxy](https://github.com/reyohoho/twitch_quality_proxy)
-- **VAFT Ad Blocker**: [TwitchAdSolutions](https://github.com/TwitchAdSolutions)
-
-## 📄 라이선스
-
-이 프로젝트는 [MIT License](LICENSE) 하에 배포됩니다.
-
-## 🔗 링크
-
-- **원본 userscript**: [ReYohoho Twitch Proxy](https://github.com/reyohoho/twitch_quality_proxy)
-- **VAFT Ad Blocker**: [TwitchAdSolutions](https://github.com/TwitchAdSolutions)
-- **Theos Documentation**: https://theos.dev
-
-## ⭐ 스타
-
-이 프로젝트가 도움이 되셨다면 ⭐ 스타를 눌러주세요!
-
----
-
-**⚠️ 주의**: 이 패키지는 jailbroken 기기에서만 작동합니다. 비-jailbreak 기기에서는 작동하지 않습니다.
+MIT

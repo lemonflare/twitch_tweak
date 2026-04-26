@@ -1,112 +1,96 @@
 # TwitchProxy IPA Injector
 
-IPA 파일을 드래그&드롭하여 TwitchProxy.dylib를 자동으로 인젝션하는 도구입니다.
+`TwitchProxy.dylib`를 복호화된 Twitch IPA에 주입해 재패키징하는 도구입니다.
 
-## 📋 필수 요구사항
+## 권장 방식
 
-### 1. TwitchProxy.dylib 파일
-- GitHub Actions의 Artifacts에서 `TwitchProxy.dylib` 다운로드
-- 이 폴더에 `TwitchProxy.dylib` 파일 배치
+GitHub Actions의 `Inject TwitchProxy into IPA` 워크플로를 사용하세요.
 
-### 2. Python 설치
-- Windows: https://www.python.org/downloads/
-- 설치 시 "Add Python to PATH" 체크
+필수 입력:
 
-### 3. Mach-O 수정 도구 (선택사항)
+- `ipa_url`: 복호화된 원본 IPA 다운로드 URL
+- `display_name`: 생성될 IPA 이름
 
-**옵션 A: optool (추천)**
-```bash
-# WSL (Ubuntu)에서 설치
-brew install optool
-```
+선택 입력:
 
-**옵션 B: insert_dylib**
-```bash
-# WSL (Ubuntu)에서 설치
-brew install insert_dylib
-```
+- `app_name`: 앱 표시 이름을 바꿀 때만 사용
+- `bundle_id`: 특별한 이유가 있을 때만 입력
 
-도구가 없으면 dylib만 복사되고 실행 파일 수정은 수동으로 해야 합니다.
+`bundle_id`는 기본값이 비어 있습니다. 원본 bundle id를 유지하는 것이 안전합니다. Twitch 앱의 로그인, 채팅, 키체인, app group 상태는 bundle id에 의존할 수 있으므로 임의로 `com.twitch.TwitchApp` 같은 값으로 바꾸면 채팅을 못 불러오는 문제가 생길 수 있습니다.
 
-## 🚀 사용 방법
+## 로컬 사용
 
-### 방법 1: 배치 파일 (가장 쉬움)
+필요 파일:
 
-1. **`TwitchProxy.dylib` 파일을 이 폴더에 배치**
-2. **IPA 파일을 `inject.bat`으로 드래그&드롭**
-3. 완료를 기다리면 `+TwitchProxy.ipa` 파일 생성
+- `TwitchProxy.dylib`
+- 복호화된 `.ipa`
+- Python 3
+- Mach-O 수정 도구: `optool` 또는 `insert_dylib`
 
-### 방법 2: Python 직접 실행
+실행:
 
 ```bash
-python inject_dylib.py your_app.ipa
+python inject_dylib.py Twitch.ipa
 ```
 
-### 방법 3: 바로가기 사용
+Windows에서는 IPA 파일을 `inject.bat`로 드래그 앤 드롭할 수 있습니다.
 
-1. `INSTALL_TOOLS.bat` 실행 → 바탕화면에 바로가기 생성
-2. 바탕화면의 `TwitchProxy_Injector`에 IPA 파일 드래그&드롭
+## 출력
 
-## 📦 생성된 파일
+입력:
 
-입력: `Twitch.ipa`
-출력: `Twitch+TwitchProxy.ipa`
+```text
+Twitch.ipa
+```
 
-## 📱 iOS에 설치
+출력:
 
-생성된 IPA 파일을 다음 도구로 설치:
+```text
+Twitch+TwitchProxy.ipa
+```
 
-1. **TrollStore** (권장 - 영구 설치)
-2. **Sideloadly** (Windows/Mac)
-3. **AltStore** (iOS)
-4. **Scarlet** (iOS)
+## 설치
 
-## 🔧 문제 해결
+생성된 IPA는 다음 도구로 설치할 수 있습니다.
 
-### "dylib를 찾을 수 없습니다"
-- `TwitchProxy.dylib` 파일이 현재 폴더에 있는지 확인
-- GitHub Actions에서 다운로드했는지 확인
+- TrollStore
+- Sideloadly
+- AltStore
+- Scarlet
 
-### "Mach-O 수정 도구를 찾을 수 없습니다"
-- `optool` 또는 `insert_dylib` 설치
-- 도구 없이도 dylib는 복사되지만 실행 파일 수동 수정 필요
+가능하면 TrollStore를 권장합니다. 일반 사이드로드는 서명/entitlement 차이로 일부 기능이 원본 앱과 다르게 동작할 수 있습니다.
 
-### "앱이 크래시합니다"
-- IPA와 dylib의 아키텍처가 일치하는지 확인
-- TrollStore로 설치 권장 (서명 문제 해결)
+## 검증
 
-### Windows에서 Python 경로 오류
-- Python 재설치 시 "Add Python to PATH" 체크
-- 또는 수동으로 Python을 시스템 PATH에 추가
+IPA 압축을 풀어 다음을 확인합니다.
 
-## 🎯 지원 앱
+- 앱 번들 안에 `TwitchProxy.dylib`가 포함되어 있는지
+- 실행 파일의 load command에 `TwitchProxy.dylib`가 추가되어 있는지
+- `Payload/Twitch.app/Info.plist`의 `CFBundleIdentifier`가 원본과 동일한지
+- `UISupportedInterfaceOrientations`가 원본과 동일한지
 
-Twitch 앱과 대부분의 iOS 앱에서 작동합니다:
-- Twitch (공식 앱)
-- Safari
-- Chrome
-- 기타 WebView 기반 앱
+기기 로그:
 
-## ⚠️ 주의사항
-
-- **Jailbreak 없이도 작동**하지만 TrollStore 같은 도구 필요
-- 일부 앱은 서명 검사로 인해 크래시할 수 있음
-- 재인젝션을 위해 기존 앱 삭제 후 설치 권장
-
-## 📞 지원
-
-문제 발생 시:
-1. GitHub Issues: https://github.com/kes0309/twitch_tweak/issues
-2. 로그 확인: 터미널에 표시되는 에러 메시지 확인
-
-## 🔄 업데이트
-
-최신 버전:
 ```bash
-git pull origin main
+log stream --predicate 'process == "Twitch"' --level debug
 ```
 
----
+정상 로드 시 `[TwitchProxy] Native tweak loaded` 로그가 나와야 합니다.
 
-**제작**: ReYohoho & Claude Code
-**라이선스**: MIT
+## 문제 해결
+
+### 채팅이 로드되지 않음
+
+가장 먼저 bundle id가 바뀌었는지 확인하세요. 원본 IPA가 `tv.twitch`라면 재패키징 후에도 같은 값이어야 합니다.
+
+### 가로보기에서 화면이 깨짐
+
+`Info.plist`의 orientation 설정이 원본과 달라졌는지 확인하세요. injector나 재서명 도구가 `UISupportedInterfaceOrientations`를 덮어쓰면 레이아웃 문제가 생길 수 있습니다.
+
+### dylib가 로드되지 않음
+
+Mach-O load command가 제대로 삽입되지 않았거나, dylib 아키텍처가 앱과 맞지 않을 수 있습니다. GitHub Actions에서 빌드한 최신 `TwitchProxy.dylib`로 다시 주입하세요.
+
+### 프록시가 적용되지 않음
+
+현재 tweak은 `usher.ttvnw.net`의 `.m3u8` playlist 요청만 프록시합니다. 앱 버전이 다른 스트리밍 엔드포인트를 쓰는 경우 실제 요청 URL을 로그로 확인한 뒤 `Tweak.x`의 URL 판별 조건을 조정해야 합니다.
